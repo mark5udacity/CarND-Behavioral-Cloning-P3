@@ -1,5 +1,7 @@
 import csv
 
+import matplotlib.image as mpimg
+
 import cv2
 import numpy as np
 from keras.layers import BatchNormalization, Cropping2D
@@ -34,10 +36,20 @@ print('Total of {} samples to be used for training.'.format(len(samples)))
 
 train_samples, validation_samples = train_test_split(samples, test_size=0.2)
 
-# useful constants
-img_path_idx = 0
-measure_idx = 3
 file_name_idx = -1
+def stripFolderPaths(image_path):
+    return image_path.split('/')[file_name_idx]
+
+def get_image(folder, file_name):
+    path = './{}/IMG/{}'.format(folder, stripFolderPaths(file_name))
+    return mpimg.imread(path)
+    # maybe consider something like this? -> process_image(np.asarray(Image.open(path + row[0])))
+
+# useful constants
+center_path_idx = 0
+left_path_idx = 1
+right_path_idx = 2
+measure_idx = 3
 fldr_idx = -1
 
 # Thanks to 'generator' section of Behavioral Cloning Project
@@ -51,10 +63,33 @@ def generator(samps, batch_size=256):
             images = []
             angles = []
             for batch_sample in batch_samples:
-                name = './{}/IMG/{}'.format(batch_sample[fldr_idx],
-                                batch_sample[img_path_idx].split('/')[file_name_idx])
-                images.append(cv2.imread(name))
-                angles.append(float(batch_sample[measure_idx]))
+                cur_folder = batch_sample[fldr_idx]
+
+                # Add center
+                img_center = get_image(cur_folder, batch_sample[center_path_idx])
+                images.append(img_center)
+
+                steering_center = float(batch_sample[measure_idx])
+                angles.append(steering_center)
+
+                # emphasize jungle-driving to try to pass that track
+                if 'jungle_data' == cur_folder:
+                    # flip the center image
+                    # Thanks to 'Data Augmentation' lecture
+                    image_flipped = np.fliplr(img_center)
+                    measurement_flipped = -steering_center
+
+                    # create adjusted steering measurements for the side camera images
+                    # Thanks to 'Using Multiple Cameras' lecture
+                    correction = 0.16
+                    steering_left = steering_center + correction
+                    steering_right = steering_center - correction
+
+                    img_left = get_image(cur_folder, batch_sample[center_path_idx])
+                    img_right = get_image(cur_folder, batch_sample[center_path_idx])
+
+                    images.extend([image_flipped, img_left, img_right])
+                    angles.extend([measurement_flipped, steering_left, steering_right])
 
             # trim image to only see section with road
             X_train = np.array(images)
